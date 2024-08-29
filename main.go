@@ -8,14 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
 )
-
-func maskKey(key string) string {
-	return strings.Repeat("*", 4)
-}
 
 const (
 	BaseURI = "https://public.bitbank.cc/"
@@ -49,13 +44,17 @@ type (
 	}
 )
 
+func init() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+}
+
 func main() {
-	// TODO: I'll try to implement it anyway.
-	//pub, err := nostr.GetPublicKey(nsec)
-	//if err != nil {
-	//	slog.Warn("error: ", err)
-	//	return
-	//}
+	pub, err := nostr.GetPublicKey(nsec)
+	if err != nil {
+		slog.Warn("error: ", err)
+		return
+	}
 
 	results := make(chan *TickerResponse, len(pairs))
 	errors := make(chan error, len(pairs))
@@ -63,15 +62,19 @@ func main() {
 		go fetchExchangeRate(pair, results, errors)
 	}
 
+	posts := make([]string, 0, len(pairs))
 	for i := 0; i < len(pairs); i++ {
 		select {
 		case res := <-results:
-			fmt.Printf("Pair: %v, Last Price: %v, Timestamp: %d\n", res.Pair, res.Last, res.TimeStamp)
+			posts = append(posts, fmt.Sprintf("Pair: %v, Last Price: %v, Timestamp: %d\n", res.Pair, res.Last, res.TimeStamp))
 		case err := <-errors:
 			fmt.Println("Error:", err)
 		}
 	}
 
+	for _, post := range posts {
+		publishRelay(pub, urls, post)
+	}
 }
 
 func fetchExchangeRate(pair string, results chan<- *TickerResponse, errors chan<- error) {
@@ -101,16 +104,19 @@ func fetchExchangeRate(pair string, results chan<- *TickerResponse, errors chan<
 	}
 }
 
-func publishRelay(pub string, urls [2]string) {
+func publishRelay(pub string, urls [2]string, post string) {
 	ev := nostr.Event{
 		PubKey:    pub,
 		CreatedAt: nostr.Now(),
 		Kind:      nostr.KindTextNote,
 		Tags:      nil,
-		Content:   "Hello World for coudflare1",
+		Content:   post,
 	}
 
-	ev.Sign(nsec)
+	if err := ev.Sign(nsec); err != nil {
+		slog.Warn("error: ", err)
+		return
+	}
 	ctx := context.Background()
 
 	for _, url := range urls {

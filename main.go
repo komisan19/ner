@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/nbd-wtf/go-nostr"
 )
@@ -34,13 +36,13 @@ type (
 		Low       string `json:"low"`
 		Last      string `json:"last"`
 		Vol       string `json:"vol"`
-		TimeStamp int    `json:"timestamp"`
+		TimeStamp int64  `json:"timestamp"`
 	}
 
 	TickerResponse struct {
 		Pair      string
 		Last      string
-		TimeStamp int
+		TimeStamp string
 	}
 )
 
@@ -52,7 +54,7 @@ func init() {
 func main() {
 	pub, err := nostr.GetPublicKey(nsec)
 	if err != nil {
-		slog.Warn("error: ", err)
+		slog.Warn("message", "err", err)
 		return
 	}
 
@@ -66,15 +68,15 @@ func main() {
 	for i := 0; i < len(pairs); i++ {
 		select {
 		case res := <-results:
-			posts = append(posts, fmt.Sprintf("Pair: %v, Last Price: %v, Timestamp: %d\n", res.Pair, res.Last, res.TimeStamp))
+			posts = append(posts, fmt.Sprintf("Pair: %v, Last Price: %v, Timestamp: %v\n", res.Pair, res.Last, res.TimeStamp))
 		case err := <-errors:
 			fmt.Println("Error:", err)
 		}
 	}
 
-	for _, post := range posts {
-		publishRelay(pub, urls, post)
-	}
+	result := fmt.Sprintln("仮想通貨の価格\n" + strings.Join(posts, " "))
+
+	publishRelay(pub, urls, result)
 }
 
 func fetchExchangeRate(pair string, results chan<- *TickerResponse, errors chan<- error) {
@@ -97,10 +99,12 @@ func fetchExchangeRate(pair string, results chan<- *TickerResponse, errors chan<
 		return
 	}
 
+	timeStamp := time.Unix(ticker.Data.TimeStamp/1000, 0).Format("2006-01-02 15:04:05")
+
 	results <- &TickerResponse{
 		Pair:      pair,
 		Last:      ticker.Data.Last,
-		TimeStamp: ticker.Data.TimeStamp,
+		TimeStamp: timeStamp,
 	}
 }
 
@@ -114,7 +118,7 @@ func publishRelay(pub string, urls [2]string, post string) {
 	}
 
 	if err := ev.Sign(nsec); err != nil {
-		slog.Warn("error: ", err)
+		slog.Warn("message", "err", err)
 		return
 	}
 	ctx := context.Background()
@@ -122,14 +126,13 @@ func publishRelay(pub string, urls [2]string, post string) {
 	for _, url := range urls {
 		relay, err := nostr.RelayConnect(ctx, url)
 		if err != nil {
-			slog.Warn("error: ", err)
+			slog.Warn("message", "err", err)
 			continue
 		}
 		if err := relay.Publish(ctx, ev); err != nil {
-			slog.Warn("error: ", err)
+			slog.Warn("message", "err", err)
 			continue
 		}
-
-		slog.Warn("sucess: ", url)
 	}
+	slog.Info("message", "INFO", "Success to published!")
 }

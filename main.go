@@ -106,6 +106,7 @@ func fetchExchangeRate(pair string, results chan<- *TickerResponse, errors chan<
 		Last:      ticker.Data.Last,
 		TimeStamp: timeStamp,
 	}
+
 }
 
 func publishRelay(pub string, urls [2]string, post string) {
@@ -121,6 +122,7 @@ func publishRelay(pub string, urls [2]string, post string) {
 		slog.Warn("message", "err", err)
 		return
 	}
+
 	ctx := context.Background()
 
 	for _, url := range urls {

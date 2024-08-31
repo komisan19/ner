@@ -8,14 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
 )
-
-func maskKey(key string) string {
-	return strings.Repeat("*", 4)
-}
 
 const (
 	BaseURI = "https://public.bitbank.cc/"
@@ -50,12 +45,11 @@ type (
 )
 
 func main() {
-	// TODO: I'll try to implement it anyway.
-	//pub, err := nostr.GetPublicKey(nsec)
-	//if err != nil {
-	//	slog.Warn("error: ", err)
-	//	return
-	//}
+	pub, err := nostr.GetPublicKey(nsec)
+	if err != nil {
+		slog.Warn("error: ", "err", err)
+		return
+	}
 
 	results := make(chan *TickerResponse, len(pairs))
 	errors := make(chan error, len(pairs))
@@ -71,6 +65,7 @@ func main() {
 			fmt.Println("Error:", err)
 		}
 	}
+	publishRelay(pub, urls)
 
 }
 
@@ -99,6 +94,7 @@ func fetchExchangeRate(pair string, results chan<- *TickerResponse, errors chan<
 		Last:      ticker.Data.Last,
 		TimeStamp: ticker.Data.TimeStamp,
 	}
+
 }
 
 func publishRelay(pub string, urls [2]string) {
@@ -110,20 +106,24 @@ func publishRelay(pub string, urls [2]string) {
 		Content:   "Hello World for coudflare1",
 	}
 
-	ev.Sign(nsec)
+	if err := ev.Sign(nsec); err != nil {
+		slog.Warn("error: ", "err", err)
+		return
+	}
+
 	ctx := context.Background()
 
 	for _, url := range urls {
 		relay, err := nostr.RelayConnect(ctx, url)
 		if err != nil {
-			slog.Warn("error: ", err)
+			slog.Warn("error: ", "err", err)
 			continue
 		}
 		if err := relay.Publish(ctx, ev); err != nil {
-			slog.Warn("error: ", err)
+			slog.Warn("error: ", "err", err)
 			continue
 		}
 
-		slog.Warn("sucess: ", url)
+		slog.Warn("sucess: ", "message:", url)
 	}
 }
